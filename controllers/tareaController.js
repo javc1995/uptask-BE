@@ -3,17 +3,17 @@ import Tarea from '../models/Tarea.js'
 const agregarTarea = async (req, res) => {
     const { proyecto } = req.body
     const existeproyecto = await Proyecto.findById(proyecto)
-    if (!existeproyecto){
+    if (!existeproyecto) {
         const error = new Error('Proyecto no existe')
         return res.status(404).json({
-            msg : error.message,  
+            msg: error.message,
         })
     }
 
-    if(existeproyecto.creador.toString() !== req.usuario._id.toString()){
+    if (existeproyecto.creador.toString() !== req.usuario._id.toString()) {
         const error = new Error("No tienes los permisos para anadir tareas")
         return res.status(401).json({
-            msg : error.message,  
+            msg: error.message,
         })
     }
 
@@ -31,19 +31,19 @@ const agregarTarea = async (req, res) => {
 const obtenerTarea = async (req, res) => {
     const { id } = req.params
     const tarea = await Tarea.findById(id)
-    .populate('proyecto')
+        .populate('proyecto')
 
-    if(!tarea){
+    if (!tarea) {
         const error = new Error('Tarea no encontrada')
         return res.status(404).json({
-            msg : error.message,  
+            msg: error.message,
         })
     }
-    
-    if(tarea.proyecto.creador.toString() !== req.usuario._id.toString()){
+
+    if (tarea.proyecto.creador.toString() !== req.usuario._id.toString()) {
         const error = new Error('Accion no valida')
         return res.status(403).json({
-            msg : error.message,  
+            msg: error.message,
         })
     }
 
@@ -53,19 +53,19 @@ const obtenerTarea = async (req, res) => {
 const actualizarTarea = async (req, res) => {
     const { id } = req.params
     const tarea = await Tarea.findById(id)
-    .populate('proyecto')
+        .populate('proyecto')
 
-    if(!tarea){
+    if (!tarea) {
         const error = new Error('Tarea no encontrada')
         return res.status(404).json({
-            msg : error.message,  
+            msg: error.message,
         })
     }
-    
-    if(tarea.proyecto.creador.toString() !== req.usuario._id.toString()){
+
+    if (tarea.proyecto.creador.toString() !== req.usuario._id.toString()) {
         const error = new Error('Accion no valida')
         return res.status(403).json({
-            msg : error.message,  
+            msg: error.message,
         })
     }
 
@@ -78,37 +78,77 @@ const actualizarTarea = async (req, res) => {
         const tareaAlmacenada = await Tarea.updateOne(req.body)
         return res.json(tarea)
     } catch (error) {
-        
+
     }
 
 }
 const eliminarTarea = async (req, res) => {
     const { id } = req.params
     const tarea = await Tarea.findById(id)
-    .populate('proyecto')
+        .populate('proyecto')
 
-    if(!tarea){
+    if (!tarea) {
         const error = new Error('Tarea no encontrada')
         return res.status(404).json({
-            msg : error.message,  
+            msg: error.message,
         })
     }
-    
-    if(tarea.proyecto.creador.toString() !== req.usuario._id.toString()){
+
+    if (tarea.proyecto.creador.toString() !== req.usuario._id.toString()) {
         const error = new Error('Accion no valida')
         return res.status(403).json({
-            msg : error.message,  
+            msg: error.message,
         })
     }
 
     try {
-        await tarea.deleteOne()
-        res.json({msg: 'La tarea se eliminó'})
+        const proyecto = await Proyecto.findById(tarea.proyecto)
+        proyecto.tareas.pull(tarea._id)
+        await Promise.all([
+            await proyecto.save(),
+            await tarea.deleteOne()
+        ])
+        res.json({ msg: 'La tarea se eliminó' })
     } catch (error) {
-        
+
     }
 }
-const cambiarEstado = async (req, res) => {}
+const cambiarEstado = async (req, res) => {
+    const { id } = req.params
+    const tarea = await Tarea.findById(id)
+        .populate('proyecto')        
+
+    if (!tarea) {
+        const error = new Error('Tarea no encontrada')
+        return res.status(404).json({
+            msg: error.message,
+        })
+    }
+
+    if (tarea.proyecto.creador.toString() !== req.usuario._id.toString() &&
+        !tarea.proyecto.colaboradores.some(
+            (colaborador) => colaborador._id.toString() === req.usuario._id.toString()
+        )
+    ) {
+        const error = new Error('Accion no valida')
+        return res.status(403).json({
+            msg: error.message,
+        })
+    }
+
+    tarea.estado = !tarea.estado
+    tarea.completado = req.usuario._id
+    try {
+        tarea.save()
+        const tareaAlmacenada = await Tarea.findById(id)
+        .populate('proyecto')
+        .populate('completado')
+
+        res.json(tareaAlmacenada)
+    } catch (error) {
+        console.log(error);
+    }
+}
 
 export {
     agregarTarea,

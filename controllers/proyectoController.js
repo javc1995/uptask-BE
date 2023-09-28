@@ -3,9 +3,13 @@ import Proyecto from "../models/Proyecto.js"
 import Usuario from "../models/Usuario.js"
 
 const obtenerProyectos = async (req, res) => {
-    const proyectos = await Proyecto.find()
-    .where('creador').equals(req.usuario)
-    .select('-tareas')
+    const proyectos = await Proyecto.find({
+        '$or': [
+            { 'colaboradores': { $in: req.usuario } },
+            { 'creador': { $in: req.usuario } }
+        ]
+    })
+        .select('-tareas')
     res.json(proyectos)
 }
 
@@ -25,25 +29,33 @@ const obtenerProyecto = async (req, res) => {
     const { id } = req.params
 
     const valid = mongoose.Types.ObjectId.isValid(id)
-    if(!valid){
+    if (!valid) {
         const error = new Error('Proyecto no existe')
         return res.status(404).json({ msg: error.message })
     }
-   
-    const proyecto = await Proyecto.findById(id)
-    .populate('tareas')
-    .populate('colaboradores', " nombre email")
 
-    if(!proyecto){
-        return res.status(404).json({ msg: "No encontrado"})
+    const proyecto = await Proyecto.findById(id)
+        //TODO : populate a un populate solo informativo.
+        .populate({ path: 'tareas', populate: { path: 'completado', select:"nombre" } })
+        .populate('colaboradores', " nombre email")
+
+    if (!proyecto) {
+        const error = new Error("No encontrado")
+        return res.status(404).json({ msg: error })
     }
-    
-    if (proyecto.creador.toString() !== req.usuario._id.toString()){
-        return res.status(401).json({ msg: "Accion no válida"})
-    }
+
+    if  (
+            proyecto.creador.toString() !== req.usuario._id.toString() &&
+            !proyecto.colaboradores.some(
+                (colaborador) => colaborador._id.toString() === req.usuario._id.toString()
+            )
+        ){
+            const error = new Error("Accion no válida")
+            return res.status(401).json({ msg: error.message })
+        }
 
     // Obtener las taras del proyecto
-    
+
     // const tareas = await Tarea.find()
     // .where('proyecto').equals(proyecto._id)
 
@@ -56,19 +68,19 @@ const editarProyecto = async (req, res) => {
     const { id } = req.params
 
     const valid = mongoose.Types.ObjectId.isValid(id)
-    if(!valid){
+    if (!valid) {
         const error = new Error('Proyecto no existe')
         return res.status(404).json({ msg: error.message })
     }
-   
+
     const proyecto = await Proyecto.findById(id)
 
-    if(!proyecto){
-        return res.status(404).json({ msg: "No encontrado"})
+    if (!proyecto) {
+        return res.status(404).json({ msg: "No encontrado" })
     }
-    
-    if (proyecto.creador.toString() !== req.usuario._id.toString()){
-        return res.status(401).json({ msg: "Accion no válida"})
+
+    if (proyecto.creador.toString() !== req.usuario._id.toString()) {
+        return res.status(401).json({ msg: "Accion no válida" })
     }
 
     proyecto.nombre = req.body.nombre || proyecto.nombre
@@ -90,24 +102,24 @@ const eliminarProyectos = async (req, res) => {
     const { id } = req.params
 
     const valid = mongoose.Types.ObjectId.isValid(id)
-    if(!valid){
+    if (!valid) {
         const error = new Error('Proyecto no existe')
         return res.status(404).json({ msg: error.message })
     }
-   
+
     const proyecto = await Proyecto.findById(id)
 
-    if(!proyecto){
-        return res.status(404).json({ msg: "No encontrado"})
+    if (!proyecto) {
+        return res.status(404).json({ msg: "No encontrado" })
     }
-    
-    if (proyecto.creador.toString() !== req.usuario._id.toString()){
-        return res.status(401).json({ msg: "Accion no válida"})
+
+    if (proyecto.creador.toString() !== req.usuario._id.toString()) {
+        return res.status(401).json({ msg: "Accion no válida" })
     }
 
     try {
         await proyecto.deleteOne()
-        res.json({msg:'Proyecto eliminado'})
+        res.json({ msg: 'Proyecto eliminado' })
     } catch (error) {
         console.log(error)
     }
@@ -115,11 +127,11 @@ const eliminarProyectos = async (req, res) => {
 
 const buscarColaborador = async (req, res) => {
     const { email } = req.body
-    const usuario = await Usuario.findOne({email})
-    .select('-password -createdAt -confirmado -token -updatedAt -__v')
-    if(!usuario){
+    const usuario = await Usuario.findOne({ email })
+        .select('-password -createdAt -confirmado -token -updatedAt -__v')
+    if (!usuario) {
         const error = new Error('Usuario no encontrado')
-        return res.status(404).json({msg: error.message})
+        return res.status(404).json({ msg: error.message })
     }
 
     res.json(usuario)
@@ -127,56 +139,56 @@ const buscarColaborador = async (req, res) => {
 
 const agregarColaborador = async (req, res) => {
     const proyecto = await Proyecto.findById(req.params.id)
-    if(!proyecto){
+    if (!proyecto) {
         const error = new Error('Proyecto no encontrado')
-        return res.status(404).json({msg: error.message})
+        return res.status(404).json({ msg: error.message })
     }
 
-    if(proyecto.creador.toString() !== req.usuario._id.toString()){
+    if (proyecto.creador.toString() !== req.usuario._id.toString()) {
         const error = new Error('Acción no válida')
-        return res.status(404).json({msg: error.message})
+        return res.status(404).json({ msg: error.message })
     }
 
     const { email } = req.body
-    const usuario = await Usuario.findOne({email})
-    .select('-password -createdAt -confirmado -token -updatedAt -__v')
+    const usuario = await Usuario.findOne({ email })
+        .select('-password -createdAt -confirmado -token -updatedAt -__v')
 
-    if(!usuario){
+    if (!usuario) {
         const error = new Error('Usuario no encontrado')
-        return res.status(404).json({msg: error.message})
+        return res.status(404).json({ msg: error.message })
     }
 
     // El colaborador no es el admin del proyecto
-    if(proyecto.creador.toString() == usuario._id.toString()){
+    if (proyecto.creador.toString() == usuario._id.toString()) {
         const error = new Error('El creador del proyecto no puede ser colaborador')
-        return res.status(404).json({msg: error.message})
+        return res.status(404).json({ msg: error.message })
     }
 
     // Revisar que no este ya agregado al proyecto
 
-    if(proyecto.colaboradores.includes(usuario._id)){
+    if (proyecto.colaboradores.includes(usuario._id)) {
         const error = new Error('El usuario ya pertenece al proyecto')
-        return res.status(404).json({msg: error.message})
+        return res.status(404).json({ msg: error.message })
     }
 
     // Esta bien se puede agregar
 
     proyecto.colaboradores.push(usuario._id)
     await proyecto.save()
-    res.json({msg: 'Colaborador agregado correctamente'})
+    res.json({ msg: 'Colaborador agregado correctamente' })
 
 }
 
 const EliminarColaborador = async (req, res) => {
     const proyecto = await Proyecto.findById(req.params.id)
-    if(!proyecto){
+    if (!proyecto) {
         const error = new Error('Proyecto no encontrado')
-        return res.status(404).json({msg: error.message})
+        return res.status(404).json({ msg: error.message })
     }
 
-    if(proyecto.creador.toString() !== req.usuario._id.toString()){
+    if (proyecto.creador.toString() !== req.usuario._id.toString()) {
         const error = new Error('Acción no válida')
-        return res.status(404).json({msg: error.message})
+        return res.status(404).json({ msg: error.message })
     }
 
 
@@ -184,7 +196,7 @@ const EliminarColaborador = async (req, res) => {
 
     proyecto.colaboradores.pull(req.body.id)
     await proyecto.save()
-    res.json({msg: 'Colaborador eliminado correctamente'})
+    res.json({ msg: 'Colaborador eliminado correctamente' })
 }
 
 export {
